@@ -1,5 +1,12 @@
-{
-    "model": "SONY_ZV1",
-    "cmos_width": 13.2,
-    "cmos_height": 8.8
-}
+[
+    {
+        "model": "SONY_ZV1",
+        "cmos_width": 13.2,
+        "cmos_height": 8.8
+    },
+    {
+        "model": "Canon PowerShot SX740 HS",
+        "cmos_width": 6.17,
+        "cmos_height": 4.55
+    }
+]

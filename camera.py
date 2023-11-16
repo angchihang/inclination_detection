@@ -9,11 +9,11 @@ import open3d as o3d
 CAMERA_CONFIG_PATH = "./camera_model.json"
 
 class Frame:
-    def __init__(self, input_path, camera_model="SONY_ZV1", resize_scale=4) -> None:
+    def __init__(self, input_path, resize_scale=4) -> None:
         self.input_path = input_path
         self.resize_scale = resize_scale
         self.load(input_path)
-        self.get_camera_p(camera_model=camera_model)
+        self.get_camera_p(camera_model=self.camera_model)
         self.f = self.f / self.p
         pass
 
@@ -25,8 +25,8 @@ class Frame:
             for k, v in img._getexif().items()
             if k in PIL.ExifTags.TAGS
         }
-        self.f = int(exif['FocalLength']) / (self.resize_scale)
-        print(self.f)
+        self.camera_model = exif['Model']
+        self.f = float(exif['FocalLength']) / (self.resize_scale)
         self.cx = exif['ExifImageWidth'] / (2 * self.resize_scale)
         self.cy = exif['ExifImageHeight'] / (2 * self.resize_scale)
         self.width = exif['ExifImageWidth']
@@ -35,9 +35,11 @@ class Frame:
 
     def get_camera_p(self, camera_model):
         with open(CAMERA_CONFIG_PATH, 'r') as f:
-            camera_params = json.load(f)
-            p = (camera_params['cmos_width'] / self.width + camera_params['cmos_height'] / self.height) / 2
-            self.p = p
+            cams = json.load(f)
+            for cam in cams:
+                if (cam['model'] == camera_model):
+                    p = (cam['cmos_width'] / self.width + cam['cmos_height'] / self.height) / 2
+                    self.p = p
     
     def get_intrinsic(self):
         K = np.array([
@@ -61,8 +63,8 @@ def essential_matrix_test(E, src_point ,tgt_point, camera_intrinsic):
 srcList = []
 tgtList = []
 def main(visualization = False):
-    src_frame = Frame("./data/small scale/DSC08758.JPG", resize_scale=1)
-    tgt_frame = Frame("./data/small scale/DSC08759.JPG", resize_scale=1)
+    src_frame = Frame("./data/small scale/column_left.JPG", resize_scale=1)
+    tgt_frame = Frame("./data/small scale/column_right.JPG", resize_scale=1)
 
 
     src_gray = cv.cvtColor(np.array(src_frame.img),cv.COLOR_BGR2GRAY)
@@ -103,8 +105,8 @@ def main(visualization = False):
     # print(tgt_points_to_estimate)
 
     sift = cv.SIFT_create()
-    kp1, des1 = sift.detectAndCompute(src_gray,None)
-    kp2, des2 = sift.detectAndCompute(tgt_gray,None)
+    kp1, des1 = sift.detectAndCompute(src_frame.img,None)
+    kp2, des2 = sift.detectAndCompute(tgt_frame.img,None)
 
     bf = cv.BFMatcher()
     matches = bf.knnMatch(des1,des2,k=2)
@@ -118,21 +120,14 @@ def main(visualization = False):
     src_points = np.array([kp1[m.queryIdx].pt for m in gmatches])
     tgt_points = np.array([kp2[m.trainIdx].pt for m in gmatches])
 
-    normalization_trans = src_frame.getNormalizationTrans()
-
-    # src_points = 
-
-    src_points = (src_points - np.array([src_frame.width, src_frame.height])) / np.array([src_frame.width/2, src_frame.height/2])
-    tgt_points = (tgt_points - np.array([tgt_frame.width, tgt_frame.height])) / np.array([tgt_frame.width/2, tgt_frame.height/2])
-
     camera_intrinsic = src_frame.get_intrinsic()
     print("camera intrinsic = {}".format(camera_intrinsic))
     E, mask = cv.findEssentialMat(src_points, tgt_points, camera_intrinsic)
     # print(essential_matrix_test(E, src_points[0], tgt_points[0], camera_intrinsic))
-    _, R, t, mask_, triangulatedPoints = cv.recoverPose(E, src_points, tgt_points, camera_intrinsic, distanceThresh=1)
+    _, R, t, mask_, triangulatedPoints = cv.recoverPose(E, src_points, tgt_points, camera_intrinsic, distanceThresh=50)
     print("relative R = {}".format(R))
     print("relative t = {}".format(t))
-    triangulatedPoints = triangulatedPoints.T
+    triangulatedPoints = triangulatedPoints.T[np.ma.make_mask(mask_.flatten())]
     # print(triangulatedPoints[:, :3])
     triangulatedPoints = triangulatedPoints[:, :3] / triangulatedPoints[:, -1].reshape(len(triangulatedPoints), 1)
 
