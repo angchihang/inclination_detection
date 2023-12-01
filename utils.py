@@ -76,3 +76,7 @@ def pick_points(pcd):
     vis.destroy_window()
     print("")
     return vis.get_picked_points()
+
+def angle_between_plane(n1: np.ndarray, n2: np.ndarray):
+    angle = np.arccos(np.abs(np.dot(n1, n2) / (np.linalg.norm(n1) * np.linalg.norm(n2)))) * 180 / np.pi
+    return angle
