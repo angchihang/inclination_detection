@@ -68,15 +68,68 @@ def find_similar_ev_points(src_ev: np.ndarray, tgt_points_id: np.ndarray, tgt_ev
             C_list.append(tgt_points_id[index])
     return np.array(C_list)
 
-def pick_points(pcd):
+def pick_points(pcd, prompt:str = "pick points"):
     vis = o3d.visualization.VisualizerWithEditing()
     vis.create_window()
     vis.add_geometry(pcd)
     vis.run()  # user picks points
     vis.destroy_window()
-    print("")
+    print(prompt)
     return vis.get_picked_points()
 
 def angle_between_plane(n1: np.ndarray, n2: np.ndarray):
     angle = np.arccos(np.abs(np.dot(n1, n2) / (np.linalg.norm(n1) * np.linalg.norm(n2)))) * 180 / np.pi
     return angle
+
+def extract_plane(voxel_down_pcd, plane_points_list_1, plane_points_list_2):
+    ground_pcd_1 = o3d.geometry.PointCloud()
+    ground_pcd_1.points = o3d.utility.Vector3dVector(np.asarray(voxel_down_pcd.points)[plane_points_list_1])
+    
+    segment_plane1 = ground_pcd_1.segment_plane(distance_threshold=0.005, ransac_n=4, num_iterations=1000)
+
+    ground_pcd_2 = o3d.geometry.PointCloud()
+    ground_pcd_2.points = o3d.utility.Vector3dVector(np.asarray(voxel_down_pcd.points)[plane_points_list_2])
+    
+    segment_plane2 = ground_pcd_2.segment_plane(distance_threshold=0.005, ransac_n=4, num_iterations=1000)
+
+    return ground_pcd_1, ground_pcd_2, segment_plane1, segment_plane2
+
+def fit_plane_ransac(points, n_iterations=100, distance_threshold=0.01):
+    best_plane = None
+    best_inliers = []
+    
+    for _ in range(n_iterations):
+        # Step 1: Randomly select 3 points
+        random_indices = np.random.choice(len(points), 3, replace=False)
+        random_subset = points[random_indices]
+
+        # Step 2: Fit a plane to the random subset
+        normal = fit_plane(random_subset)
+        p0 = random_subset[0]
+
+        # Step 3: Evaluate consensus
+        distances = compute_distances(points, p0, normal)
+        inliers = distances < distance_threshold
+
+        # Step 4: Update best model if current model is better
+        if inliers.sum() > len(best_inliers):
+            best_inliers = inliers
+
+    # Step 5: Select best model
+    best_plane_normal = fit_plane(points[best_inliers])
+
+    return best_plane_normal, best_inliers
+
+def fit_plane(points):
+    p1, p2, p3 = points[0], points[1], points[2]
+    vec1 = p1 - p2
+    vec2 = p1 - p3
+    normal = np.cross(vec1, vec2)
+    normal = normal / np.linalg.norm(normal)
+    return normal
+
+def compute_distances(points, p0, normal):
+    # Compute the signed distance from each point to the plane
+    p0pn_vec = points - p0
+    dist = np.dot(p0pn_vec, normal.reshape((3,1))) / np.linalg.norm(normal)
+    return dist.flatten()
